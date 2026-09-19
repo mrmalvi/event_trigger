@@ -19,8 +19,28 @@ EventTrigger.configure do |config|
   config.email.enabled = false
   config.email.from = ENV["EVENT_TRIGGER_EMAIL_FROM"]
   config.email.to = ENV["EVENT_TRIGGER_EMAIL_TO"]
+  # Rails apps: uncomment so delivery goes through ActionMailer
+  # (which uses config.action_mailer.smtp_settings below).
+  # config.email.delivery_method = :action_mailer
   # nil (or []) = ALL events.
   config.email.events = ["loan.activated", "loan.foreclosed"]
+
+  # --- ActionMailer SMTP (Rails) ---
+  # Uncomment and move these lines to config/environments/development.rb
+  # (and production.rb). Requires `gem "net-smtp"` on Ruby 3.1+.
+  # config.action_mailer.delivery_method = :smtp
+  # config.action_mailer.smtp_settings = {
+  #   address: ENV.fetch("SMTP_ADDRESS", "smtp.gmail.com"),
+  #   port: ENV.fetch("SMTP_PORT", "587").to_i,
+  #   domain: ENV.fetch("SMTP_DOMAIN", "gmail.com"),
+  #   user_name: ENV["SMTP_USERNAME"],
+  #   password: ENV["SMTP_PASSWORD"]&.delete(" "),
+  #   authentication: :plain,
+  #   enable_starttls_auto: true
+  # }
+  # .env entries needed:
+  # SMTP_USERNAME=youremail@gmail.com
+  # SMTP_PASSWORD=xxxx xxxx xxxx xxxx   # Gmail App Password (16 letters), not your login password
 
   config.webhook.enabled = false
   config.webhook.url = ENV["EVENT_TRIGGER_WEBHOOK_URL"]
