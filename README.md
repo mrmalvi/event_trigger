@@ -1,0 +1,142 @@
+# EventTrigger
+
+Configurable event-based notification system for Ruby and Rails.
+
+Configure notification providers **once**, then simply call:
+
+```ruby
+EventTrigger.trigger("loan.activated", data: { loan_id: 123, customer_name: "Kamlesh" })
+```
+
+The gem determines automatically which **enabled** providers are
+configured for that event and executes only those providers.
+Anything can be sent in `data:` -- passed through to providers/handlers.
+
+## Features
+
+- Providers: **Slack**, **Email**, **Webhook**, plus custom providers
+- Central `EventTrigger.configure` block (plain Ruby and Rails)
+- Per-provider `enabled` flag + global `config.enabled` kill-switch
+- Per-provider `events` allow-list (`nil`/empty = all events)
+- Simple API: `trigger(name, data:)` + `on(name) { |event| }`
+- Adapter architecture: every provider implements `#deliver(event)`
+- Failure isolation: one provider failing never blocks others
+- Optional logging: triggered / executed / skipped / failed
+- No app-specific business logic -- just events + providers
+
+## Installation
+
+```ruby
+gem "event_trigger"
+```
+
+```sh
+bundle install
+```
+
+Requires Ruby >= 2.6. No runtime dependencies (stdlib only).
+
+## Configuration
+
+```ruby
+EventTrigger.configure do |config|
+  config.enabled = true
+  config.logger = Logger.new($stdout) # optional; nil = silent
+
+  config.slack.enabled = true
+  config.slack.webhook_url = ENV["SLACK_WEBHOOK_URL"]
+  config.slack.events = ["loan.activated", "loan.overdue", "payment.received"]
+
+  config.email.enabled = false
+  config.email.from = ENV["EVENT_TRIGGER_EMAIL_FROM"]
+  config.email.to = "ops@example.com"
+  config.email.events = ["loan.activated", "loan.foreclosed"]
+
+  config.webhook.enabled = true
+  config.webhook.url = ENV["EVENT_TRIGGER_WEBHOOK_URL"]
+  config.webhook.events = ["loan.activated"]
+end
+```
+
+Shortcuts `config.slack_webhook_url=` and `config.email_from=` delegate
+to the per-provider configs.
+
+`events` is an allow-list per provider. `nil` (default) or `[]` means
+**ALL events** — the provider runs for every trigger (as long as it is
+enabled):
+
+```ruby
+config.slack.events = nil  # or [] → all events
+```
+
+### Rails initializer
+
+Copy `examples/initializer.rb` to `config/initializers/event_trigger.rb`.
+A Railtie is shipped so the gem loads cleanly inside Rails.
+
+## Triggering events
+
+```ruby
+EventTrigger.trigger("loan.activated", data: { loan_id: 123, customer_name: "Kamlesh" })
+```
+
+Rules: `loan.activated` with Slack+Email enabled and subscribed runs both;
+`loan.overdue` with only Slack subscribed runs Slack only; with
+`config.enabled = false` nothing runs.
+
+## Handlers
+
+```ruby
+EventTrigger.on("loan.activated") do |event|
+  puts "Loan #{event.payload[:loan_id]} activated"
+end
+```
+
+`event` exposes `#name`, `#payload`, `#timestamp`. Use `off(name)` to
+remove handlers. Handler errors are logged, never raised.
+
+## Providers
+
+Slack posts `{ text: }` to `hooks.slack.com` URLs (error payloads render as
+error plus backtrace lines) and a rich embed (`username: RailsErrorNotifier`,
+Backtrace/Context fields) to other webhook URLs. Email sends via Net::SMTP
+in plain Ruby (or ActionMailer when configured with `mailer`). Webhook POSTs
+`{ event:, payload:, timestamp: }` as JSON.
+
+Custom provider:
+
+```ruby
+class SmsProvider < EventTrigger::Provider
+  def deliver(event)
+    # use config + global_config
+  end
+end
+EventTrigger.register_provider(:sms, SmsProvider)
+EventTrigger.configure { |c| c.for(:sms).enabled = true }
+```
+
+Architecture: EventTrigger -> Event -> Enabled Providers (Slack/Email/Webhook).
+
+## Logging
+
+Set `config.logger`. Logs: event triggered, provider executed, provider
+skipped (disabled / not subscribed), provider failed, handler failed.
+
+## Public API
+
+`configure`, `configuration`, `reset!`, `trigger(name, data:)`, `on`, `off`,
+`register_provider`, `Provider#deliver`, `Registry`, `Dispatcher`.
+
+## Development
+
+```sh
+bundle install
+bundle exec rspec
+```
+
+See `examples/plain_ruby.rb` for a runnable demo.
+
+## License
+
+MIT -- see LICENSE.txt.
+
