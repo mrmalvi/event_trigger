@@ -71,8 +71,40 @@ config.slack.events = nil  # or [] → all events
 
 ### Rails initializer
 
-Copy `examples/initializer.rb` to `config/initializers/event_trigger.rb`.
-A Railtie is shipped so the gem loads cleanly inside Rails.
+Generate the default config (recommended):
+
+```sh
+rails generate event_trigger:install
+# overwrite an existing one:
+rails generate event_trigger:install --force
+```
+
+This copies `config/initializers/event_trigger.rb` into your app:
+
+```ruby
+EventTrigger.configure do |config|
+  config.enabled = true
+
+  config.slack.enabled = true
+  config.slack.webhook_url = ENV["SLACK_WEBHOOK_URL"]
+  config.slack.events = nil # or your event names
+
+  config.email.enabled = false
+  # Rails apps: uncomment for ActionMailer delivery:
+  # config.email.delivery_method = :action_mailer
+  config.email.from = ENV["EVENT_TRIGGER_EMAIL_FROM"]
+  config.email.events = nil
+
+  config.webhook.enabled = false
+  config.discord.enabled = false
+  config.whatsapp.enabled = false
+end
+```
+
+No generator run? The gem's Railtie auto-applies these defaults on
+boot and auto-creates the initializer file when missing (never
+overwrites). Manual alternative: copy `examples/initializer.rb` to
+`config/initializers/event_trigger.rb`.
 
 ## Triggering events
 
