@@ -24,15 +24,19 @@ module EventTrigger
         @providers.key?(name.to_sym)
       end
 
-      # Restore the three built-in providers (used by reset!).
+      # Restore the five built-in providers (used by reset!).
       def reset!
         @providers = {}
         require_relative "providers/slack_provider"
         require_relative "providers/email_provider"
         require_relative "providers/webhook_provider"
+        require_relative "providers/discord_provider"
+        require_relative "providers/whatsapp_provider"
         register(:slack, Providers::SlackProvider)
         register(:email, Providers::EmailProvider)
         register(:webhook, Providers::WebhookProvider)
+        register(:discord, Providers::DiscordProvider)
+        register(:whatsapp, Providers::WhatsappProvider)
       end
     end
   end

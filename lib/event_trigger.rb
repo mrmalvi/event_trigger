@@ -8,6 +8,8 @@ require_relative "event_trigger/provider"
 require_relative "event_trigger/providers/slack_provider"
 require_relative "event_trigger/providers/email_provider"
 require_relative "event_trigger/providers/webhook_provider"
+require_relative "event_trigger/providers/discord_provider"
+require_relative "event_trigger/providers/whatsapp_provider"
 require_relative "event_trigger/dispatcher"
 require_relative "event_trigger/defaults"
 require_relative "event_trigger/railtie" if defined?(Rails::Railtie)

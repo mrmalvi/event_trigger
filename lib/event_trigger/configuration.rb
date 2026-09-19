@@ -65,7 +65,7 @@ module EventTrigger
   # Global configuration object yielded by EventTrigger.configure.
   class Configuration
     attr_accessor :enabled, :logger
-    attr_reader :slack, :email, :webhook
+    attr_reader :slack, :email, :webhook, :discord, :whatsapp
 
     # Backwards-compatible top-level shortcuts required by the spec:
     #   config.slack_webhook_url = ENV["SLACK_WEBHOOK_URL"]
@@ -77,6 +77,8 @@ module EventTrigger
       @slack = ProviderConfig.new
       @email = ProviderConfig.new
       @webhook = ProviderConfig.new
+      @discord = ProviderConfig.new
+      @whatsapp = ProviderConfig.new
       @custom = {}
     end
 
@@ -96,6 +98,14 @@ module EventTrigger
       email.from = value
     end
 
+    def discord_webhook_url
+      discord.webhook_url
+    end
+
+    def discord_webhook_url=(value)
+      discord.webhook_url = value
+    end
+
     # Access (or lazily create) the config for any provider name,
     # including future/custom providers:
     #   config.for(:sms).enabled = true
@@ -105,6 +115,8 @@ module EventTrigger
       when :slack then slack
       when :email then email
       when :webhook then webhook
+      when :discord then discord
+      when :whatsapp then whatsapp
       else
         @custom[key] ||= ProviderConfig.new
       end
@@ -113,7 +125,8 @@ module EventTrigger
 
     # All provider configs keyed by name, including custom ones.
     def providers
-      { slack: slack, email: email, webhook: webhook }.merge(@custom)
+      { slack: slack, email: email, webhook: webhook,
+        discord: discord, whatsapp: whatsapp }.merge(@custom)
     end
 
     def enabled?

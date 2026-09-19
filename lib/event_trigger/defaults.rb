@@ -35,6 +35,17 @@ module EventTrigger
       config.webhook.url ||= ENV["EVENT_TRIGGER_WEBHOOK_URL"]
       # Leave webhook subscribed to nothing until the app opts in.
       config.webhook.events ||= []
+
+      config.discord.enabled = false
+      config.discord.webhook_url ||= ENV["DISCORD_WEBHOOK_URL"]
+      config.discord.events ||= []
+
+      config.whatsapp.enabled = false
+      config.whatsapp.twilio_sid ||= ENV["TWILIO_ACCOUNT_SID"]
+      config.whatsapp.twilio_token ||= ENV["TWILIO_AUTH_TOKEN"]
+      config.whatsapp.twilio_from ||= ENV["TWILIO_WHATSAPP_FROM"]
+      config.whatsapp.twilio_to ||= ENV["TWILIO_WHATSAPP_TO"]
+      config.whatsapp.events ||= []
     end
   end
 end

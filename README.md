@@ -14,7 +14,7 @@ Anything can be sent in `data:` -- passed through to providers/handlers.
 
 ## Features
 
-- Providers: **Slack**, **Email**, **Webhook**, plus custom providers
+- Providers: **Slack**, **Email**, **Webhook**, **Discord**, **WhatsApp (Twilio)**, plus custom providers
 - Central `EventTrigger.configure` block (plain Ruby and Rails)
 - Per-provider `enabled` flag + global `config.enabled` kill-switch
 - Per-provider `events` allow-list (`nil`/empty = all events)
@@ -115,7 +115,47 @@ EventTrigger.register_provider(:sms, SmsProvider)
 EventTrigger.configure { |c| c.for(:sms).enabled = true }
 ```
 
-Architecture: EventTrigger -> Event -> Enabled Providers (Slack/Email/Webhook).
+Architecture: EventTrigger -> Event -> Enabled Providers
+(Slack/Email/Webhook/Discord/WhatsApp).
+
+## Discord provider (`config.discord`)
+
+Ported from `RailsErrorNotifier`: posts the rich embed payload
+(`username: RailsErrorNotifier`, Backtrace/Context fields, ~1014-char
+truncation) to a Discord incoming-webhook URL.
+
+```ruby
+config.discord.enabled = true
+config.discord.webhook_url = ENV["DISCORD_WEBHOOK_URL"]
+config.discord.events = ["app.error"]
+```
+
+## WhatsApp provider (`config.whatsapp`, via Twilio)
+
+Ported from `RailsErrorNotifier`:
+
+```ruby
+config.whatsapp.enabled = true
+config.whatsapp.twilio_sid = ENV["TWILIO_ACCOUNT_SID"]
+config.whatsapp.twilio_token = ENV["TWILIO_AUTH_TOKEN"]
+config.whatsapp.twilio_from = ENV["TWILIO_WHATSAPP_FROM"] # whatsapp:+14155238886
+config.whatsapp.twilio_to = ENV["TWILIO_WHATSAPP_TO"]
+config.whatsapp.events = ["app.error"]
+```
+
+Per-trigger override: `data: { whatsapp_to: "whatsapp:+919..." }`.
+Numbers without the `whatsapp:` scheme are normalized automatically.
+
+## Crash safety
+
+Every new provider follows the same contract as the old ones:
+- Missing config / missing `twilio-ruby` gem / network errors raise
+  `EventTrigger::Error` inside `#deliver` only.
+- `EventTrigger::Dispatcher` rescues per provider, logs
+  `provider ':x' failed ...`, and keeps running the rest — **the host
+  app never crashes because a notification failed**.
+- HTTP providers (Slack/Webhook/Discord) try stdlib `Net::HTTP`
+  first and fall back to `Faraday` when installed.
 
 ## Logging
 
