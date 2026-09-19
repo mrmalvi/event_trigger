@@ -146,17 +146,6 @@ config.whatsapp.events = ["app.error"]
 Per-trigger override: `data: { whatsapp_to: "whatsapp:+919..." }`.
 Numbers without the `whatsapp:` scheme are normalized automatically.
 
-## Crash safety
-
-Every new provider follows the same contract as the old ones:
-- Missing config / missing `twilio-ruby` gem / network errors raise
-  `EventTrigger::Error` inside `#deliver` only.
-- `EventTrigger::Dispatcher` rescues per provider, logs
-  `provider ':x' failed ...`, and keeps running the rest — **the host
-  app never crashes because a notification failed**.
-- HTTP providers (Slack/Webhook/Discord) try stdlib `Net::HTTP`
-  first and fall back to `Faraday` when installed.
-
 ## Logging
 
 Set `config.logger`. Logs: event triggered, provider executed, provider
