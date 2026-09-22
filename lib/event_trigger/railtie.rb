@@ -1,5 +1,13 @@
 # frozen_string_literal: true
 
+# Explicit: FileUtils is used by the initializer bootstrap below.
+# Must never raise at require time.
+begin
+  require "fileutils"
+rescue LoadError
+  nil
+end
+
 module EventTrigger
   # Rails integration:
   # 1. Applies safe defaults as soon as the gem is bundled (so the app
@@ -12,31 +20,42 @@ module EventTrigger
   #
   # Order: Railtie initializer runs BEFORE the host app's initializers, so
   # anything in config/initializers/event_trigger.rb wins over these defaults.
+  #
+  # Boot safety: every hook is wrapped so a failure here can never stop
+  # the host application from booting.
   if defined?(Rails::Railtie)
     class Railtie < Rails::Railtie
       generators do
         require "generators/event_trigger/install_generator" if defined?(Rails::Generators)
-      rescue LoadError
+      rescue StandardError
         nil
       end
 
       initializer "event_trigger.configure_rails_defaults", before: :load_environment_config do
-        require "event_trigger" unless defined?(EventTrigger::Dispatcher)
-        EventTrigger.apply_defaults!
-        if defined?(Rails.logger) && Rails.logger && EventTrigger.configuration.logger.nil?
-          EventTrigger.configuration.logger = Rails.logger
+        begin
+          require "event_trigger" unless defined?(EventTrigger::Dispatcher)
+          EventTrigger.apply_defaults!
+          if defined?(Rails.logger) && Rails.logger && EventTrigger.configuration.logger.nil?
+            EventTrigger.configuration.logger = Rails.logger
+          end
+        rescue StandardError => e
+          # Never break app boot because of notification defaults.
+          begin
+            Rails.logger&.warn("[EventTrigger] defaults could not be applied: #{e.class}: #{e.message}")
+          rescue StandardError
+            nil
+          end
         end
       end
 
       # Runs after app initializers are loaded: if the app has no
       # initializer of its own, write the default one so it exists on
-      # disk for the user to edit. Runs in every env except test (to
-      # keep the test suite hermetic).
+      # disk for the user to edit. Skipped in test to keep suites hermetic.
       initializer "event_trigger.ensure_initializer_present", after: :load_environment do
-        next unless defined?(Rails.root) && Rails.root
-        next if Rails.env.test? rescue nil
-
         begin
+          next unless defined?(Rails.root) && Rails.root
+          next if defined?(Rails.env) && Rails.env.test?
+
           dest = Rails.root.join("config/initializers/event_trigger.rb")
           next if File.exist?(dest)
 

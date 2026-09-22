@@ -4,17 +4,28 @@ require "net/http"
 require "uri"
 require "json"
 require_relative "../provider"
+require_relative "http_poster"
 
 module EventTrigger
   module Providers
-    # POSTs the event as JSON to a configured HTTP endpoint.
+    # Generic HTTP webhook provider for any custom system.
     #
-    # Config:
-    #   config.webhook.enabled = true
-    #   config.webhook.url = "https://example.com/hooks/events"
+    # Existing behaviour (unchanged): POSTs { event:, payload:,
+    # timestamp: } as JSON to config.webhook.url with optional
+    # config.webhook.headers.
+    #
+    # NEW additive options (only used when set):
+    #   config.webhook.method = :post        # :post (default), :put, :patch, :delete, :get
+    # NOTE: ProviderConfig defines Object#method, so write the verb via
+    # `config.webhook[:method] = :post` (reader also via config[:method]).
+    #   config.webhook.url = ENV["EVENT_WEBHOOK_URL"]
     #   config.webhook.headers = { "Authorization" => "Bearer ..." }
-    #   config.webhook.events = ["loan.activated"]
+    #
+    # method is normalized (:POST/"post" all work); unknown verbs fall back
+    # to POST so old configs never break.
     class WebhookProvider < Provider
+      include HttpPoster
+
       def self.provider_name
         :webhook
       end
@@ -23,12 +34,18 @@ module EventTrigger
         url = config.url
         raise Error, "Webhook url is not configured" if url.nil? || url.to_s.strip.empty?
 
-        post_json(url.to_s, event_to_json(event), headers)
+        request_json(http_method, url.to_s, event_to_json(event), headers, service: "Webhook")
         log("delivered event '#{event.name}' to #{url}")
         true
       end
 
+
       private
+
+      def http_method
+        m = ((config[:method] rescue nil) || :post).to_s.downcase
+        %w[get post put patch delete].include?(m) ? m.to_sym : :post
+      end
 
       def headers
         { "Content-Type" => "application/json" }.merge(config.headers || {})
@@ -44,21 +61,6 @@ module EventTrigger
 
       def stringify(hash)
         hash.each_with_object({}) { |(k, v), m| m[k.to_s] = v }
-      end
-
-      def post_json(url, body, headers)
-        uri = URI.parse(url)
-        http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = uri.scheme == "https"
-        http.open_timeout = 5
-        http.read_timeout = 10
-        request = Net::HTTP::Post.new(uri.request_uri, headers)
-        request.body = JSON.generate(body)
-        response = http.request(request)
-        unless response.is_a?(Net::HTTPSuccess)
-          raise Error, "Webhook delivery failed (HTTP #{response.code}): #{response.body}"
-        end
-        response
       end
     end
   end

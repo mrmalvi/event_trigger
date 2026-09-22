@@ -1,12 +1,8 @@
 # frozen_string_literal: true
 
-begin
-  require "twilio-ruby"
-rescue LoadError
-  # Optional at load time: #deliver raises a clear EventTrigger::Error
-  # when the gem is missing, which the Dispatcher logs without
-  # crashing the host app.
-end
+# NOTE: twilio-ruby is required lazily inside #deliver — see SmsProvider.
+# Keeping it out of load time means the gem pays nothing when WhatsApp
+# is disabled / unused (requirement: no eager provider deps).
 
 require_relative "../provider"
 
@@ -21,7 +17,7 @@ module EventTrigger
     #   config.whatsapp.twilio_token = ENV["TWILIO_AUTH_TOKEN"]
     #   config.whatsapp.twilio_from = "whatsapp:+14155238886"
     #   config.whatsapp.twilio_to = "whatsapp:+919876543210"
-    #   config.whatsapp.events = ["app.error"]
+    #   config.whatsapp.events = ["payment.received", "loan.overdue"]
     #
     # Aliases: account_sid/sid, auth_token/token, from/to.
     # Per-trigger override: data: { whatsapp_to: "whatsapp:+..." }
@@ -37,8 +33,9 @@ module EventTrigger
       end
 
       def deliver(event)
-        unless defined?(Twilio::REST::Client)
-          raise Error, 'twilio-ruby gem is not installed (add `gem "twilio-ruby"` to your Gemfile)'
+        client_class = twilio_client_class
+        unless client_class
+          raise Error, TwilioClient::GEM_MISSING_MESSAGE
         end
 
         sid = config.twilio_sid || config.account_sid || config.sid
@@ -52,7 +49,7 @@ module EventTrigger
         raise Error, "WhatsApp sender (twilio_from) is not configured" if blank?(from)
         raise Error, "WhatsApp recipient (twilio_to) is not configured" if blank?(to)
 
-        client = Twilio::REST::Client.new(sid.to_s, token.to_s)
+        client = TwilioClient.resolve.new(sid.to_s, token.to_s)
         client.messages.create(
           from: normalize_number(from),
           to: normalize_number(to),
@@ -62,7 +59,14 @@ module EventTrigger
         true
       end
 
+
       private
+
+      # Thin wrapper around the lazy resolver — kept as an instance method
+      # so tests can stub it (e.g. simulate "gem missing" deterministically).
+      def twilio_client_class
+        TwilioClient.resolve
+      end
 
       def build_body(event)
         payload = event.payload

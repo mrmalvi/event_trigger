@@ -46,6 +46,7 @@ module EventTrigger
         true
       end
 
+
       private
 
       def action_mailer_delivery?
@@ -68,7 +69,24 @@ module EventTrigger
       def deliver_via_smtp(from, to, subject, body)
         require "net/smtp"
         settings = smtp_settings
-        message = <<~MSG
+        message = build_message(from, to, subject, body)
+        smtp = Net::SMTP.new(settings[:address] || "localhost", settings[:port] || 25)
+        apply_smtp_timeouts(smtp, settings)
+        if settings[:enable_starttls_auto] && smtp.respond_to?(:enable_starttls_auto)
+          smtp.enable_starttls_auto
+        end
+        smtp.start(
+          settings[:domain] || "localhost",
+          settings[:user_name] || settings[:username],
+          settings[:password],
+          settings[:authentication] || :plain
+        ) do
+          smtp.send_message(message, from, Array(to))
+        end
+      end
+
+      def build_message(from, to, subject, body)
+        <<~MSG
           From: #{from}
           To: #{Array(to).join(", ")}
           Subject: #{subject}
@@ -77,20 +95,29 @@ module EventTrigger
 
           #{body}
         MSG
-        Net::SMTP.start(
-          settings[:address] || "localhost",
-          settings[:port] || 25,
-          settings[:domain] || "localhost",
-          settings[:user_name],
-          settings[:password],
-          settings[:authentication] || :plain
-        ) do |smtp|
-          smtp.send_message(message, from, Array(to))
-        end
       end
 
+      # Guard against a stalled/unreachable SMTP server blocking the app
+      # forever (configurable via config.email.smtp timeouts).
+      def apply_smtp_timeouts(smtp, settings)
+        smtp.open_timeout = settings[:open_timeout] || 5 if smtp.respond_to?(:open_timeout=)
+        smtp.read_timeout = settings[:read_timeout] || 10 if smtp.respond_to?(:read_timeout=)
+        smtp.write_timeout = settings[:write_timeout] || 10 if smtp.respond_to?(:write_timeout=)
+      rescue StandardError
+        nil
+      end
+
+      # NEW additive alias: spec uses config.email.smtp = {...}.
+      # Existing config.email.smtp_settings keeps working; smtp wins
+      # when both are set. Accepts string or symbol keys.
       def smtp_settings
-        config.smtp_settings || {}
+        raw = config.smtp || config.smtp_settings || {}
+        raw = {} unless raw.is_a?(Hash)
+        raw.each_with_object({}) do |(k, v), memo|
+          key = k.to_sym
+          key = :user_name if key == :username # Net::SMTP expects :user_name
+          memo[key] = v
+        end
       end
 
       def build_subject(event)

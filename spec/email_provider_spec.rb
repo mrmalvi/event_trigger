@@ -11,17 +11,29 @@ RSpec.describe EventTrigger::Providers::EmailProvider do
     config
   end
 
+  # Stubs Net::SMTP.new (the provider builds an instance so it can apply
+  # open/read timeouts) and returns the fake session.
+  def stub_smtp
+    smtp = double("smtp")
+    allow(smtp).to receive(:respond_to?).and_return(true)
+    allow(smtp).to receive(:open_timeout=)
+    allow(smtp).to receive(:read_timeout=)
+    allow(smtp).to receive(:write_timeout=)
+    allow(smtp).to receive(:start).and_yield
+    allow(smtp).to receive(:send_message)
+    allow(Net::SMTP).to receive(:new).and_return(smtp)
+    smtp
+  end
+
   it "delivers via SMTP with from/to/subject/body" do
     config = build_config
     provider = described_class.new(config: config, global_config: EventTrigger.configuration)
     event = EventTrigger::Event.new(name: "loan.activated", payload: { loan_id: 123 })
 
-    smtp = double("smtp")
-    allow(smtp).to receive(:send_message)
-    allow(Net::SMTP).to receive(:start).and_yield(smtp)
+    smtp = stub_smtp
 
     expect(provider.deliver(event)).to be true
-    expect(Net::SMTP).to have_received(:start)
+    expect(Net::SMTP).to have_received(:new)
     expect(smtp).to have_received(:send_message) do |message, from, to|
       expect(from).to eq("no-reply@example.com")
       expect(to).to eq(["ops@example.com"])
@@ -39,9 +51,7 @@ RSpec.describe EventTrigger::Providers::EmailProvider do
       payload: { email_to: "user@example.com", loan_id: 1 }
     )
 
-    smtp = double("smtp")
-    allow(smtp).to receive(:send_message)
-    allow(Net::SMTP).to receive(:start).and_yield(smtp)
+    smtp = stub_smtp
 
     provider.deliver(event)
 
@@ -59,9 +69,7 @@ RSpec.describe EventTrigger::Providers::EmailProvider do
   end
 
   it "triggers end-to-end (loan.activated -> Email runs only if enabled)" do
-    smtp = double("smtp")
-    allow(smtp).to receive(:send_message)
-    allow(Net::SMTP).to receive(:start).and_yield(smtp)
+    smtp = stub_smtp
 
     EventTrigger.configure do |c|
       c.enabled = true

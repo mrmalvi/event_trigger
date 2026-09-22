@@ -5,40 +5,85 @@ require "uri"
 require "json"
 require "time"
 require_relative "../provider"
+require_relative "http_poster"
 
 module EventTrigger
   module Providers
-    # Sends event notifications to Slack (or any Slack-compatible /
-    # Discord-compatible incoming-webhook URL).
+    # Sends event notifications to Slack.
     #
-    # Config:
+    # Two modes (existing webhook mode is untouched):
+    #
+    # 1. Legacy incoming-webhook mode (unchanged):
+    #      config.slack.webhook_url = ENV["SLACK_WEBHOOK_URL"]
+    #    - hooks.slack.com URLs receive { text: ... }.
+    #    - any other URL receives the Discord-style embed payload.
+    #
+    # 2. NEW Slack Web API mode (chat.postMessage), used only when BOTH
+    #    token + channel are set:
+    #      config.slack.token = ENV["SLACK_BOT_TOKEN"]
+    #      config.slack.channel = ENV["SLACK_CHANNEL"]  # e.g. "#alerts" or "C123"
+    #      API: POST https://slack.com/api/chat.postMessage
+    #      Auth: Authorization: Bearer <token>
+    #
+    # Common:
     #   config.slack.enabled = true
-    #   config.slack.webhook_url = ENV["SLACK_WEBHOOK_URL"]
-    #   config.slack.events = ["loan.activated"]
-    #
-    # Payload behaviour:
-    # - Slack incoming webhooks (hooks.slack.com) receive { text: ... }.
-    # - All other URLs (e.g. Discord-style webhooks) receive a rich embed
-    #   payload with error/backtrace/context fields, truncated to stay
-    #   within message limits.
+    #   config.slack.events = ["loan.activated", "payment.received"]
     class SlackProvider < Provider
       MAX_TEXT = 1500
+
+      WEB_API_URL = "https://slack.com/api/chat.postMessage"
 
       def self.provider_name
         :slack
       end
 
+      include HttpPoster
+
       def deliver(event)
+        # --- NEW: Web API mode (additive; webhook path below untouched) ---
+        token = config.token
+        channel = config.channel
+        if present?(token) && present?(channel)
+          return deliver_via_web_api(event, token.to_s, channel.to_s)
+        end
+
+        # --- Existing webhook mode (byte-for-byte behaviour preserved) ---
         url = config.webhook_url || config.url
         raise Error, "Slack webhook_url is not configured" if url.nil? || url.to_s.strip.empty?
 
         body = build_payload(url.to_s, event)
-        post_json(url.to_s, body)
+        post_json(url.to_s, body, { "Content-Type" => "application/json" }, service: "Slack")
         log("delivered event '#{event.name}'")
         true
       end
 
+
       private
+
+      def deliver_via_web_api(event, token, channel)
+        body = { channel: channel, text: slack_text(event, event.payload) }
+        response = post_json(
+          WEB_API_URL, body,
+          { "Content-Type" => "application/json", "Authorization" => "Bearer #{token}" },
+          service: "Slack"
+        )
+        parsed = parse_json(response.body)
+        unless parsed.is_a?(Hash) && parsed["ok"] == true
+          raise Error, "Slack Web API error: #{response.body}"
+        end
+        log("delivered event '#{event.name}' via chat.postMessage")
+        true
+      end
+
+      def parse_json(str)
+        JSON.parse(str.to_s)
+      rescue StandardError
+        nil
+      end
+
+      def present?(value)
+        !value.nil? && !value.to_s.strip.empty?
+      end
 
       def build_payload(url, event)
         payload = event.payload
@@ -102,21 +147,6 @@ module EventTrigger
 
       def truncate_for_discord(str, limit = 1000)
         truncate(str, limit)
-      end
-
-      def post_json(url, body)
-        uri = URI.parse(url)
-        http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = uri.scheme == "https"
-        http.open_timeout = 5
-        http.read_timeout = 10
-        request = Net::HTTP::Post.new(uri.request_uri, "Content-Type" => "application/json")
-        request.body = JSON.generate(body)
-        response = http.request(request)
-        unless response.is_a?(Net::HTTPSuccess)
-          raise Error, "Slack delivery failed (HTTP #{response.code}): #{response.body}"
-        end
-        response
       end
     end
   end

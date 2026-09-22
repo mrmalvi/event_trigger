@@ -87,8 +87,8 @@ RSpec.describe EventTrigger::Providers::WhatsappProvider do
   end
 
   it "missing twilio gem raises a clear error instead of NameError" do
-    hide_const("Twilio")
     provider = described_class.new(config: build_config, global_config: EventTrigger.configuration)
+    expect(provider).to receive(:twilio_client_class).and_return(nil)
     expect { provider.deliver(EventTrigger::Event.new(name: "x", payload: {})) }
       .to raise_error(EventTrigger::Error, /twilio-ruby/)
   end

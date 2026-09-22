@@ -44,6 +44,8 @@ EventTrigger.configure do |config|
 
   config.webhook.enabled = false
   config.webhook.url = ENV["EVENT_TRIGGER_WEBHOOK_URL"]
+  # NOTE: `method` collides with Ruby's Object#method, so set it via []:
+  # config.webhook[:method] = :post   # :post (default) | :put | :patch | :delete | :get
   # nil (or []) = ALL events.
   config.webhook.events = ["loan.activated"]
 
@@ -59,4 +61,26 @@ EventTrigger.configure do |config|
   config.whatsapp.twilio_to = ENV["TWILIO_WHATSAPP_TO"]
   # nil (or []) = ALL events.
   config.whatsapp.events = []
+
+  # --- NEW providers (opt-in; all default to disabled) ---
+  config.telegram.enabled = false
+  config.telegram.bot_token = ENV["TELEGRAM_BOT_TOKEN"]
+  config.telegram.chat_id = ENV["TELEGRAM_CHAT_ID"]
+  # nil (or []) = ALL events.
+  config.telegram.events = []
+
+  config.teams.enabled = false
+  config.teams.access_token = ENV["TEAMS_ACCESS_TOKEN"]
+  config.teams.team_id = ENV["TEAMS_TEAM_ID"]
+  config.teams.channel_id = ENV["TEAMS_CHANNEL_ID"]
+  # nil (or []) = ALL events.
+  config.teams.events = []
+
+  config.sms.enabled = false
+  config.sms.provider = :twilio
+  config.sms.account_sid = ENV["TWILIO_ACCOUNT_SID"]
+  config.sms.auth_token = ENV["TWILIO_AUTH_TOKEN"]
+  config.sms.from = ENV["TWILIO_FROM"]
+  # nil (or []) = ALL events.
+  config.sms.events = []
 end

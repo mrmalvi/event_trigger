@@ -36,6 +36,18 @@ module EventTrigger
     # Generic option bag for provider-specific settings
     # (webhook_url, from, url, ...). Allows:
     #   config.slack.webhook_url = "..."
+    #
+    # NOTE: `config[:key]` reads raw options without hitting Ruby's own
+    # methods (e.g. `config.method` would call Object#method, so use
+    # `config[:method]` for the webhook HTTP verb).
+    def [](key)
+      @options[safe_key(key)]
+    end
+
+    def []=(key, value)
+      @options[safe_key(key)] = value
+    end
+
     def method_missing(name, *args)
       name_str = name.to_s
       if name_str.end_with?("=")
@@ -60,12 +72,29 @@ module EventTrigger
     def to_h
       { enabled: enabled, events: events }.merge(@options)
     end
+
+    private
+
+    # Never let a non-symbolizable key raise (e.g. Integer keys).
+    def safe_key(key)
+      key.respond_to?(:to_sym) ? key.to_sym : key.to_s.to_sym
+    rescue StandardError
+      key.to_s
+    end
   end
 
   # Global configuration object yielded by EventTrigger.configure.
   class Configuration
-    attr_accessor :enabled, :logger
-    attr_reader :slack, :email, :webhook, :discord, :whatsapp
+    # Hard safety net: no provider call may hang a host app forever.
+    # 0 (or nil) disables the timeout. Per-provider override:
+    #   config.slack.delivery_timeout = 5
+    DEFAULT_DELIVERY_TIMEOUT = 15
+    # Handlers are NOT time-limited by default (0 = disabled) because a
+    # killed handler could leave partial work behind. Set to enable.
+    DEFAULT_HANDLER_TIMEOUT = 0
+
+    attr_accessor :enabled, :logger, :delivery_timeout, :handler_timeout
+    attr_reader :slack, :email, :webhook, :discord, :whatsapp, :telegram, :teams, :sms
 
     # Backwards-compatible top-level shortcuts required by the spec:
     #   config.slack_webhook_url = ENV["SLACK_WEBHOOK_URL"]
@@ -74,12 +103,28 @@ module EventTrigger
     def initialize
       @enabled = true
       @logger = nil
+      @delivery_timeout = DEFAULT_DELIVERY_TIMEOUT
+      @handler_timeout = DEFAULT_HANDLER_TIMEOUT
       @slack = ProviderConfig.new
       @email = ProviderConfig.new
       @webhook = ProviderConfig.new
       @discord = ProviderConfig.new
       @whatsapp = ProviderConfig.new
+      @telegram = ProviderConfig.new
+      @teams = ProviderConfig.new
+      @sms = ProviderConfig.new
       @custom = {}
+    end
+
+    # Effective timeout for one provider (per-provider wins, then global).
+    def timeout_for(provider_config)
+      per_provider = begin
+        provider_config[:delivery_timeout]
+      rescue StandardError
+        nil
+      end
+      value = per_provider.nil? ? @delivery_timeout : per_provider
+      value.nil? ? DEFAULT_DELIVERY_TIMEOUT : value.to_f
     end
 
     def slack_webhook_url
@@ -117,6 +162,9 @@ module EventTrigger
       when :webhook then webhook
       when :discord then discord
       when :whatsapp then whatsapp
+      when :telegram then telegram
+      when :teams then teams
+      when :sms then sms
       else
         @custom[key] ||= ProviderConfig.new
       end
@@ -124,9 +172,12 @@ module EventTrigger
     alias provider for
 
     # All provider configs keyed by name, including custom ones.
+    # Order here is the dispatch order (existing providers first so
+    # old result hashes keep their key order for backwards compat).
     def providers
       { slack: slack, email: email, webhook: webhook,
-        discord: discord, whatsapp: whatsapp }.merge(@custom)
+        discord: discord, whatsapp: whatsapp,
+        telegram: telegram, teams: teams, sms: sms }.merge(@custom)
     end
 
     def enabled?

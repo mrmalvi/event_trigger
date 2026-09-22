@@ -13,7 +13,7 @@ module EventTrigger
     #   config.discord.enabled = true
     #   config.discord.webhook_url = ENV["DISCORD_WEBHOOK_URL"]
     #   config.discord.username = "RailsErrorNotifier"  # optional
-    #   config.discord.events = ["app.error"]
+    #   config.discord.events = ["loan.activated", "loan.overdue"]
     #
     # Crash-safe: failures raise EventTrigger::Error, which the
     # Dispatcher logs — the host app never crashes because of Discord.
@@ -30,10 +30,11 @@ module EventTrigger
         url = config.webhook_url || config.url
         raise Error, "Discord webhook_url is not configured" if url.nil? || url.to_s.strip.empty?
 
-        post_json(url.to_s, build_payload(event), service: "Discord")
+        post_json(url.to_s, build_payload(event), { "Content-Type" => "application/json" }, service: "Discord")
         log("delivered event '#{event.name}'")
         true
       end
+
 
       private
 
@@ -63,7 +64,7 @@ module EventTrigger
         truncate(err.to_s, 1500)
       end
 
-      def truncate(str, limit)
+      def truncate(str, limit = 1500)
         s = str.to_s
         s.length > limit ? "#{s[0, limit]}…" : s
       end

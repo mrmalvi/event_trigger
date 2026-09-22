@@ -118,7 +118,7 @@ RSpec.describe "Configuration, logging, unknown handling, custom providers" do
       config: config, global_config: EventTrigger.configuration
     )
     captured = nil
-    allow(provider).to receive(:post_json) { |_url, body, _h| captured = body }
+    allow(provider).to receive(:request_json) { |_m, _url, body, _h, service: "HTTP"| captured = body }
     provider.deliver(EventTrigger::Event.new(name: "loan.activated", payload: { loan_id: 5 }))
     expect(captured[:event]).to eq("loan.activated")
     expect(captured[:payload]["loan_id"]).to eq(5)
